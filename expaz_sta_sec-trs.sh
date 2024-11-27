@@ -3,26 +3,20 @@
 # Log in to Azure CLI
 az login
 
-# Fetch only active subscriptions
-echo "Fetching active subscriptions..."
-subscriptions=$(az account list --query "[?state=='Enabled'].id" -o tsv)
+# Fetch all subscriptions in the tenant
+echo "Fetching all subscriptions..."
+subscriptions=$(az account list --query '[].id' -o tsv)
 
 # Initialize an output file
 output_file="SecureTransferCheckResults.csv"
 echo "SubscriptionName,StorageAccountName,ResourceGroupName,Location,SecureTransfer" > $output_file
 
-# Loop through each active subscription
+# Loop through each subscription
 for subscription in $subscriptions; do
     echo "Checking subscription: $subscription"
     
-    # Set the subscription context
+    # Set the subscription context (even if not default)
     az account set --subscription $subscription
-
-    # Verify the subscription is accessible
-    if ! az account show --subscription "$subscription" &>/dev/null; then
-        echo "Skipping inaccessible subscription: $subscription"
-        continue
-    fi
 
     # Get all storage accounts in the subscription
     storage_accounts=$(az storage account list --query '[].{name:name, resourceGroup:resourceGroup, location:location}' -o json)
@@ -42,7 +36,7 @@ for subscription in $subscriptions; do
         # Check if Secure Transfer is enabled
         secure_transfer=$(az storage account show --name "$storage_account_name" --resource-group "$resource_group" --query "enableHttpsTrafficOnly" -o tsv 2>/dev/null)
         
-        # Handle potential errors (e.g., permission issues or deleted storage accounts)
+        # Handle the secure transfer value
         if [[ -z "$secure_transfer" ]]; then
             secure_transfer_status="Unknown (Error)"
         elif [[ "$secure_transfer" == "true" ]]; then
@@ -52,7 +46,8 @@ for subscription in $subscriptions; do
         fi
 
         # Append the results to the CSV file
-        echo "$(az account show --query 'name' -o tsv),$storage_account_name,$resource_group,$location,$secure_transfer_status" >> $output_file
+        subscription_name=$(az account show --query 'name' -o tsv)
+        echo "$subscription_name,$storage_account_name,$resource_group,$location,$secure_transfer_status" >> $output_file
     done
 done
 
